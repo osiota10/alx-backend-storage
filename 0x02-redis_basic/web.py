@@ -3,30 +3,43 @@
 web cache and tracker
 """
 import requests
-import redis
-from functools import wraps
+import time
+from functools import lru_cache
 
-store = redis.Redis()
+# Dictionary to track URL access count
+url_access_count = {}
 
 
-def count_url_access(method):
-    """ Decorator counting how many times
-    a URL is accessed """
-    @wraps(method)
-    def wrapper(url):
-        cached_key = "cached:" + url
-        cached_data = store.get(cached_key)
-        if cached_data:
-            return cached_data.decode("utf-8")
+def get_page(url: str) -> str:
+    # Increment URL access count
+    url_access_count[f"count:{url}"] = url_access_count.get(f"count:{url}", 0) + 1
 
-        count_key = "count:" + url
-        html = method(url)
+    # Use requests to fetch the HTML content
+    response = requests.get(url)
+    html_content = response.text
 
-        store.incr(count_key)
-        store.set(cached_key, html)
-        store.expire(cached_key, 10)
-        return html
-    return wrapper
+    return html_content
+
+
+# Use lru_cache decorator to cache the result with an expiration time of 10 seconds
+@lru_cache(maxsize=None, typed=True)
+def cached_get_page(url: str) -> str:
+    return get_page(url)
+
+
+# Test the get_page function with caching and URL access count tracking
+if __name__ == "__main__":
+    url = "http://slowwly.robertomurray.co.uk/delay/1000/url/http://www.example.com"
+
+    # Access the URL multiple times to test caching
+    for _ in range(5):
+        start_time = time.time()
+        content = cached_get_page(url)
+        print(f"URL content fetched in {time.time() - start_time} seconds")
+
+    # Print the URL access count
+    print(url_access_count)
+
 
 
 @count_url_access
